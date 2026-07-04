@@ -50,3 +50,4 @@ export function mapJellyfinItemSingle(response: any): any {
   if (!response) return null;
   return mapJellyfinItem(response);
 }
+export const mapBaseItemDto = mapJellyfinItem;
