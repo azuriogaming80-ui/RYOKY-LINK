@@ -53,7 +53,7 @@ const routes = [
     ]
   },
   {
-    path: '/player',
+    path: '/player/:id',
     name: 'player',
     component: () => import('@/views/PlayerView.vue')
   }
