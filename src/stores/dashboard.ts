@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { jellyfinApi } from '@/services/jellyfin-api'
 import { useAuthStore } from './auth'
-import { mapBaseItemDto } from '@/utils/jellyfin-mapper'
+import { mapBaseItemDto } from '@/utils/mapper'
 import type { BaseItemDto } from '@/types'
 
 interface RecentlyAddedData {
