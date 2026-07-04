@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { jellyfinApi } from '@/services/jellyfin-api'
 import { useAuthStore } from './auth'
-import { mapJellyfinView } from '@/utils/jellyfin-mapper'
+import { mapJellyfinItem as mapJellyfinView } from "@/utils/mapper";
 import type { JellyfinView } from '@/types'
 
 export const useViewsStore = defineStore('views', () => {
