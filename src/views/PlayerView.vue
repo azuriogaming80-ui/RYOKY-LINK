@@ -1,66 +1,189 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePlaybackStore } from '@/stores/playback';
-// On importera VideoPlayer juste après !
-// import VideoPlayer from '@/components/player/VideoPlayer.vue';
+import VideoPlayer from '@/components/player/VideoPlayer.vue';
+import PlayerControls from '@/components/player/PlayerControls.vue';
+import { useMediaSegments } from '@/composables/useMediaSegments';
+import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 
 const route = useRoute();
 const router = useRouter();
 const playback = usePlaybackStore();
 
+const videoPlayerRef = ref<InstanceType<typeof VideoPlayer> | null>(null);
+const itemId = route.params.id as string;
+
+// 🎨 State local pour l'UI (synchronisé avec Video.js)
+const isPlaying = ref(false);
+const currentTime = ref(0); // en secondes
+const duration = ref(0);    // en secondes
+
+// ⏭️ 1. Initialisation du Chasseur d'Intros/Outros
+const { activeSegment, getSkipTime } = useMediaSegments(
+  itemId, 
+  () => playback.positionTicks // Passé en getter pour une réactivité parfaite
+);
+
+// 🚀 2. Cycle de vie et Initialisation du Stream
 onMounted(async () => {
-  const itemId = route.params.id as string;
-  // Permet de reprendre la lecture exactement là où Candy s'était arrêtée
-  const startTicks = Number(route.query.ticks) || 0; 
-  
   try {
+    const startTicks = Number(route.query.ticks) || 0;
     await playback.initPlayback(itemId, startTicks);
+    
+    // Récupération de la durée totale depuis les métadonnées Jellyfin
+    if (playback.currentItem?.RunTimeTicks) {
+      duration.value = playback.currentItem.RunTimeTicks / 10000000;
+    }
   } catch (error: any) {
-    console.error('Erreur de lecture :', error.message);
-    // Si la règle d'or bloque le fichier, on retourne au dashboard
-    alert('Format non supporté en DirectPlay par le navigateur. Transcodage interdit par la politique RYOKY.');
+    console.error('[RYOKY] Erreur de lecture :', error);
+    alert(error.message || 'Format non supporté en DirectPlay.');
     router.back();
   }
 });
 
 onBeforeUnmount(async () => {
-  // Nettoyage crucial quand on quitte la page ou qu'on change de vidéo
+  // 🛡️ Nettoyage crucial de la session Jellyfin
   await playback.stopPlayback();
+});
+
+// 🔄 3. Synchronisation du temps (Store -> UI)
+watch(() => playback.positionTicks, (ticks) => {
+  currentTime.value = ticks / 10000000;
+});
+
+// 🎮 4. Handlers pour les Contrôles et le Clavier
+const togglePlay = () => {
+  const player = videoPlayerRef.value?.getPlayer();
+  if (player) {
+    if (player.paused()) {
+      player.play();
+    } else {
+      player.pause();
+    }
+  }
+};
+
+const seek = (offset: number) => {
+  const player = videoPlayerRef.value?.getPlayer();
+  if (player) {
+    player.currentTime(player.currentTime() + offset);
+  }
+};
+
+const toggleFullscreen = () => {
+  videoPlayerRef.value?.toggleFullscreen();
+};
+
+const goBack = () => {
+  router.back();
+};
+
+const handleSkip = () => {
+  const skipTime = getSkipTime();
+  const player = videoPlayerRef.value?.getPlayer();
+  if (skipTime !== null && player) {
+    player.currentTime(skipTime);
+  }
+};
+
+// ⌨️ 5. Activation des Raccourcis Clavier
+useKeyboardShortcuts({
+  togglePlay,
+  seek,
+  toggleFullscreen
+});
+
+// 🔗 6. Écoute des événements natifs de Video.js pour sync l'UI
+watch(videoPlayerRef, (newRef) => {
+  if (newRef) {
+    const player = newRef.getPlayer();
+    if (player) {
+      player.on('play', () => { isPlaying.value = true; });
+      player.on('pause', () => { isPlaying.value = false; });
+      player.on('ended', () => { 
+        isPlaying.value = false;
+        // TODO: Plus tard, on pourra trigger l'épisode suivant ici !
+        router.back(); 
+      });
+    }
+  }
 });
 </script>
 
 <template>
-  <div class="player-container">
-    <!-- Le vrai player Video.js viendra se brancher ici -->
-    <!-- <VideoPlayer v-if="playback.playbackUrl" :src="playback.playbackUrl" /> -->
+  <div class="player-view">
+    <!-- Le Moteur Vidéo -->
+    <VideoPlayer ref="videoPlayerRef" />
     
-    <div v-else class="loading-sao">
-      <span>Initialisation du flux DirectPlay... ⏳</span>
-    </div>
+    <!-- Le Cockpit (Interface Cyberpunk) -->
+    <PlayerControls 
+      v-if="duration > 0"
+      :is-playing="isPlaying"
+      :current-time="currentTime"
+      :duration="duration"
+      @toggle-play="togglePlay"
+      @seek="(time) => videoPlayerRef?.getPlayer()?.currentTime(time)"
+      @toggle-fullscreen="toggleFullscreen"
+      @go-back="goBack"
+    />
+
+    <!-- ⏭️ Overlay Skip Segment (Intro/Outro) -->
+    <transition name="slide-up">
+      <button 
+        v-if="activeSegment" 
+        class="skip-button"
+        @click="handleSkip"
+      >
+        Passer {{ activeSegment.type === 'intro' ? 'l\'intro' : 'la fin' }} ⏭️
+      </button>
+    </transition>
   </div>
 </template>
 
 <style scoped>
-.player-container {
+.player-view {
+  position: relative;
   width: 100vw;
   height: 100vh;
-  background-color: var(--sao-bg, #050505);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: #000;
   overflow: hidden;
 }
-.loading-sao {
+
+/* 🌃 Le Bouton Skip Style SAO */
+.skip-button {
+  position: absolute;
+  bottom: 100px;
+  right: 40px;
+  z-index: 20;
+  padding: 12px 24px;
+  background: rgba(10, 10, 15, 0.8);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--sao-cyan, #00ffff);
   color: var(--sao-cyan, #00ffff);
   font-family: 'Orbitron', sans-serif;
+  font-size: 1rem;
   text-transform: uppercase;
-  letter-spacing: 2px;
-  animation: pulse 1.5s infinite;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 4px;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+  transition: all 0.2s ease;
 }
-@keyframes pulse {
-  0% { opacity: 0.5; }
-  50% { opacity: 1; }
-  100% { opacity: 0.5; }
+
+.skip-button:hover {
+  background: var(--sao-cyan, #00ffff);
+  color: #000;
+  box-shadow: 0 0 25px rgba(0, 255, 255, 0.8);
+  transform: scale(1.05);
+}
+
+/* Animations Vue */
+.slide-up-enter-active, .slide-up-leave-active {
+  transition: all 0.3s ease;
+}
+.slide-up-enter-from, .slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
 }
 </style>
