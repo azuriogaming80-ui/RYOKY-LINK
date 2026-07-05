@@ -1,7 +1,11 @@
 // src/composables/useImageUrl.ts
 import { jellyfinApi } from '@/services/jellyfin-api';
+import { useAuthStore } from '@/stores/auth';
+import { getUserProfileImageUrl } from '@/services/user-image-service';
 
 export function useImageUrl() {
+  const auth = useAuthStore();
+
   function getPrimaryImageUrl(
     itemId: string,
     options?: { width?: number; height?: number; tag?: string }
@@ -24,10 +28,24 @@ export function useImageUrl() {
     return jellyfinApi.getImageUrl(itemId, 'Thumb', { width: 600, tag });
   }
 
+  // ========== USER PROFILE IMAGES ==========
+  function getUserProfileImageUrl(
+    userId: string,
+    options?: { width?: number; height?: number; quality?: number }
+  ): string {
+    return getUserProfileImageUrl(
+      auth.serverUrl,
+      userId,
+      auth.accessToken,
+      options
+    );
+  }
+
   return {
     getPrimaryImageUrl,
     getBackdropUrl,
     getLogoUrl,
     getThumbUrl,
+    getUserProfileImageUrl,
   };
 }
