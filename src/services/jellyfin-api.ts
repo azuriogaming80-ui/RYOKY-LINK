@@ -1,20 +1,24 @@
 // src/services/jellyfin-api.ts
-import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import { mapJellyfinItem, mapJellyfinItems, mapJellyfinItemSingle } from '@/utils/mapper';
 import type { MediaSegment } from '@/types/item';
+
+// 🛡️ Fonction de secours pour générer un UUID compatible avec les contextes non-sécurisés (HTTP local sur mobile)
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 
 class JellyfinApiService {
   private client: AxiosInstance;
   private _baseUrl: string = '';
   private _token: string = '';
   private _userId: string = '';
-  private _deviceId: string;
 
   constructor() {
-    // Génération et persistance d'un DeviceId unique pour ce navigateur
-    this._deviceId = localStorage.getItem('jellyfin_deviceid') || crypto.randomUUID();
-    localStorage.setItem('jellyfin_deviceid', this._deviceId);
-
     this.client = axios.create({
       timeout: 30000,
       headers: {
@@ -23,17 +27,15 @@ class JellyfinApiService {
       },
     });
 
-    // Intercepteur global : Injection du header MediaBrowser standardisé
-    this.client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-      let authHeader = `MediaBrowser Client="RYOKY-LINK", Device="Vue Web", DeviceId="${this._deviceId}", Version="1.0.0"`;
+    // Interceptor token
+    this.client.interceptors.request.use((config) => {
       if (this._token) {
-        authHeader += `, Token="${this._token}"`;
+        config.headers['X-Emby-Token'] = this._token;
       }
-      config.headers['X-Emby-Authorization'] = authHeader;
       return config;
     });
 
-    // Intercepteur 401 → auto logout global
+    // Interceptor 401 → auto logout
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
@@ -42,8 +44,7 @@ class JellyfinApiService {
           this._userId = '';
           localStorage.removeItem('jellyfin_token');
           localStorage.removeItem('jellyfin_userid');
-          // On émet l'événement pour que le router puisse réagir sans hard-reload
-          window.dispatchEvent(new CustomEvent('jellyfin:unauthorized'));
+          window.location.href = '/login';
         }
         return Promise.reject(error);
       }
@@ -59,8 +60,7 @@ class JellyfinApiService {
   }
 
   setServer(url: string) {
-    // Nettoyage robuste des slashs de fin
-    this._baseUrl = url.replace(/\/+$/, '');
+    this._baseUrl = url.replace(/\/$/, '');
   }
 
   setToken(token: string) {
@@ -72,17 +72,24 @@ class JellyfinApiService {
   }
 
   // ========== AUTH ==========
-  async getPublicUsers(): Promise<any[]> {
+  async getPublicUsers(): Promise<any> {
     const data = (await this.client.get(`${this._baseUrl}/Users/Public`)).data;
-    return mapJellyfinItems(data) || [];
+    return mapJellyfinItem(data) || [];
   }
 
   async authenticateByName(username: string, password: string): Promise<any> {
-    // Le header MediaBrowser est déjà injecté par l'intercepteur !
+    // 🛡️ Utilisation du generateUUID() fallback pour éviter le crash sur mobile
+    const deviceId = localStorage.getItem('jellyfin_deviceid') || generateUUID();
+    localStorage.setItem('jellyfin_deviceid', deviceId);
+
+    const auth = `MediaBrowser Client="RyokyLink",Device="Browser",DeviceId="${deviceId}",Version="1.0.0"`;
+
     const data = (await this.client.post(
       `${this._baseUrl}/Users/AuthenticateByName`,
-      { Username: username, Pw: password }
+      { Username: username, Pw: password },
+      { headers: { 'X-Emby-Authorization': auth } }
     )).data;
+
     return mapJellyfinItem(data);
   }
 
@@ -121,6 +128,7 @@ class JellyfinApiService {
   }): Promise<any> {
     const query = new URLSearchParams();
     query.append('UserId', params.userId);
+
     if (params.parentId) query.append('ParentId', params.parentId);
     if (params.includeItemTypes?.length) query.append('IncludeItemTypes', params.includeItemTypes.join(','));
     if (params.mediaTypes?.length) query.append('MediaTypes', params.mediaTypes.join(','));
@@ -129,33 +137,50 @@ class JellyfinApiService {
     if (params.sortOrder) query.append('SortOrder', params.sortOrder);
     if (params.filters) query.append('Filters', params.filters);
     if (params.limit !== undefined) query.append('Limit', String(params.limit));
-    if (params.startIndex !== undefined) query.append('StartIndex', String(params.startIndex));
+    if (params.startIndex !== undefined) query.append('startIndex', String(params.startIndex));
     if (params.fields?.length) query.append('Fields', params.fields.join(','));
     if (params.imageTypeLimit !== undefined) query.append('ImageTypeLimit', String(params.imageTypeLimit));
     if (params.enableImageTypes?.length) query.append('EnableImageTypes', params.enableImageTypes.join(','));
     if (params.searchTerm) query.append('SearchTerm', params.searchTerm);
 
     const data = (await this.client.get(`${this._baseUrl}/Items?${query.toString()}`)).data;
-    return mapJellyfinItem(data);
+    return mapJellyfinItem(data); 
   }
 
   // ========== ITEM DETAIL ==========
   async getItem(userId: string, itemId: string): Promise<any> {
     const fields = [
-      'PrimaryImageAspectRatio', 'CanDelete', 'MediaSourceCount', 'Overview', 'Genres',
-      'Studios', 'People', 'Status', 'AirDays', 'AirTime', 'Path', 'Tags', 'ChildCount',
-      'DateCreated', 'IndexNumber', 'ParentIndexNumber', 'SeriesName', 'SeasonName',
-      'SeriesId', 'SeasonId',
+      'PrimaryImageAspectRatio',
+      'CanDelete',
+      'MediaSourceCount',
+      'Overview',
+      'Genres',
+      'Studios',
+      'People',
+      'Status',
+      'AirDays',
+      'AirTime',
+      'Path',
+      'Tags',
+      'ChildCount',
+      'DateCreated',
+      'IndexNumber',
+      'ParentIndexNumber',
+      'SeriesName',
+      'SeasonName',
+      'SeriesId',
+      'SeasonId',
     ].join(',');
 
     const data = (await this.client.get(
       `${this._baseUrl}/Users/${userId}/Items/${itemId}?Fields=${fields}`
     )).data;
+
     return mapJellyfinItemSingle(data);
   }
 
   // ========== SEASONS ==========
-  async getSeasons(seriesId: string, userId: string): Promise<any> {
+  async getSeasons(seriesId: string, userId: string): Promise<any[]> {
     const query = new URLSearchParams();
     query.append('UserId', userId);
     query.append('Fields', 'PrimaryImageAspectRatio,BasicSyncInfo,CanDelete,MediaSourceCount,IndexNumber');
@@ -165,11 +190,12 @@ class JellyfinApiService {
     const data = (await this.client.get(
       `${this._baseUrl}/Shows/${seriesId}/Seasons?${query.toString()}`
     )).data;
-    return mapJellyfinItem(data);
+
+    return mapJellyfinItems(data);
   }
 
   // ========== EPISODES ==========
-  async getEpisodes(seriesId: string, seasonId: string, userId: string): Promise<any> {
+  async getEpisodes(seriesId: string, seasonId: string, userId: string): Promise<any[]> {
     const query = new URLSearchParams();
     query.append('UserId', userId);
     query.append('SeasonId', seasonId);
@@ -180,7 +206,8 @@ class JellyfinApiService {
     const data = (await this.client.get(
       `${this._baseUrl}/Shows/${seriesId}/Episodes?${query.toString()}`
     )).data;
-    return mapJellyfinItem(data);
+
+    return mapJellyfinItems(data);
   }
 
   // ========== SIMILAR ITEMS ==========
@@ -195,6 +222,7 @@ class JellyfinApiService {
     const data = (await this.client.get(
       `${this._baseUrl}/Items/${itemId}/Similar?${query.toString()}`
     )).data;
+
     return mapJellyfinItems(data);
   }
 
@@ -212,7 +240,8 @@ class JellyfinApiService {
       imageTypeLimit: 1,
       enableImageTypes: ['Primary', 'Backdrop', 'Thumb'],
     });
-    return data.items || [];
+    // 🛡️ Sécurisation du retour tableau
+    return data?.Items || data?.items || [];
   }
 
   async getNextUp(userId: string, params?: { limit?: number; seriesId?: string; parentId?: string }): Promise<any[]> {
@@ -220,12 +249,14 @@ class JellyfinApiService {
     query.append('UserId', userId);
     query.append('Limit', String(params?.limit || 24));
     query.append('Fields', 'PrimaryImageAspectRatio,DateCreated,MediaSourceCount,BasicSyncInfo');
+
     if (params?.seriesId) query.append('SeriesId', params.seriesId);
     if (params?.parentId) query.append('ParentId', params.parentId);
 
     const data = (await this.client.get(
       `${this._baseUrl}/Shows/NextUp?${query.toString()}`
     )).data;
+
     return mapJellyfinItems(data);
   }
 
@@ -241,7 +272,8 @@ class JellyfinApiService {
       imageTypeLimit: 1,
       enableImageTypes: ['Primary', 'Backdrop', 'Thumb'],
     });
-    return data.items || [];
+    // 🛡️ Sécurisation du retour tableau
+    return data?.Items || data?.items || [];
   }
 
   // ========== PLAYBACK ==========
@@ -250,6 +282,7 @@ class JellyfinApiService {
       `${this._baseUrl}/Items/${itemId}/PlaybackInfo?UserId=${userId}`,
       params || {}
     )).data;
+
     return mapJellyfinItem(data);
   }
 
@@ -294,12 +327,20 @@ class JellyfinApiService {
       tag?: string;
     }
   ): string {
+    if (!itemId) return '';
     let url = `${this._baseUrl}/Items/${itemId}/Images/${imageType}`;
     const params = new URLSearchParams();
+
+    // 🔒 Injection du token pour éviter les blocages CORS / Auth sur les balises <img>
+    if (this._token) {
+      params.append('api_key', this._token);
+    }
+
     if (options?.width) params.append('MaxWidth', String(options.width));
     if (options?.height) params.append('MaxHeight', String(options.height));
     if (options?.quality) params.append('Quality', String(options.quality));
     if (options?.tag) params.append('tag', options.tag);
+
     if (params.toString()) url += `?${params.toString()}`;
     return url;
   }
@@ -317,6 +358,7 @@ class JellyfinApiService {
     const data = (await this.client.get(
       `${this._baseUrl}/Items?${query.toString()}`
     )).data;
+
     return mapJellyfinItems(data);
   }
 

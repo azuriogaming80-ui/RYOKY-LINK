@@ -6,11 +6,12 @@
   >
     <div class="card-poster">
       <img 
-        v-if="imageUrl" 
+        v-if="imageUrl && !imgError" 
         :src="imageUrl" 
         :alt="item.Name"
         loading="lazy"
         class="poster-img"
+        @error="handleImgError"
       />
       <div v-else class="poster-fallback">
         <span>{{ item.Name?.charAt(0) || '?' }}</span>
@@ -30,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { jellyfinApi } from '@/services/jellyfin-api';
 
@@ -39,6 +40,16 @@ const props = defineProps<{
 }>();
 
 const router = useRouter();
+const imgError = ref(false);
+
+// 🛡️ Reset de l'erreur si l'item change (ex: scroll infini ou changement de rail)
+watch(() => props.item?.Id, () => {
+  imgError.value = false;
+});
+
+const handleImgError = () => {
+  imgError.value = true;
+};
 
 // Génération de l'URL de l'image (Format 2:3 optimisé pour le portrait)
 const imageUrl = computed(() => {
@@ -55,7 +66,7 @@ const progressPercent = computed(() => {
   return Math.min(100, Math.round((position / runtime) * 100));
 });
 
-// Navigation vers la page de détails (Option B validée)
+// Navigation vers la page de détails
 const navigateToDetails = () => {
   router.push({ 
     name: 'details', 
