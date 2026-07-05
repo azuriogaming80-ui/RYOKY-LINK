@@ -1,7 +1,7 @@
 // src/composables/useImageUrl.ts
 import { jellyfinApi } from '@/services/jellyfin-api';
 import { useAuthStore } from '@/stores/auth';
-import { getUserProfileImageUrl } from '@/services/user-image-service';
+import { getUserProfileImageUrl as getProfileImageUrl } from '@/services/user-image-service';
 
 export function useImageUrl() {
   const auth = useAuthStore();
@@ -29,11 +29,11 @@ export function useImageUrl() {
   }
 
   // ========== USER PROFILE IMAGES ==========
-  function getUserProfileImageUrl(
+  function getUserProfileImage(
     userId: string,
     options?: { width?: number; height?: number; quality?: number }
   ): string {
-    return getUserProfileImageUrl(
+    return getProfileImageUrl(
       auth.serverUrl,
       userId,
       auth.accessToken,
@@ -46,6 +46,6 @@ export function useImageUrl() {
     getBackdropUrl,
     getLogoUrl,
     getThumbUrl,
-    getUserProfileImageUrl,
+    getUserProfileImage,
   };
 }
