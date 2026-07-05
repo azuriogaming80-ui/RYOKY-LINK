@@ -35,7 +35,7 @@
           >
             <div class="profile-avatar">
               <img
-                v-if="user.PrimaryImageTag && !avatarErrors[user.Id]"
+                v-if="!avatarErrors[user.Id]"
                 :src="getProfileImageUrl(user)"
                 :alt="user.Name"
                 loading="lazy"
@@ -58,7 +58,7 @@
         <div class="selected-profile">
           <div class="profile-avatar large">
             <img
-              v-if="selectedUser?.PrimaryImageTag && !avatarErrors[selectedUser?.Id]"
+              v-if="!avatarErrors[selectedUser?.Id]"
               :src="getProfileImageUrl(selectedUser)"
               :alt="selectedUser?.Name"
               @error="handleAvatarError(selectedUser)"
@@ -102,6 +102,7 @@ import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { jellyfinApi } from '@/services/jellyfin-api';
 import { useAuthStore } from '@/stores/auth';
+import { getUserProfileImageUrl } from '@/services/user-image-service';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -224,12 +225,16 @@ const handleAvatarError = (user: any) => {
   }
 };
 
-// 🔒 URL de l'image de profil - MÉTHODE SIMPLE ET ROBUSTE (KISS)
+// 🔒 URL de l'image de profil - Utilise le bon endpoint Jellyfin
 const getProfileImageUrl = (user: any): string => {
   if (!user?.Id) return '';
-  // URL ultra-simple qui fonctionne parfaitement avec Jellyfin
-  // On utilise le ref local serverUrl pour garantir la réactivité
-  return `${serverUrl.value}/Users/${user.Id}/Images/Primary?maxHeight=300`;
+  // ✅ Utilise le service dédié aux images de profil
+  return getUserProfileImageUrl(
+    serverUrl.value.replace(/\/$/, ''),
+    user.Id,
+    jellyfinApi.token || '',
+    { height: 300, width: 300 }
+  );
 };
 </script>
 
