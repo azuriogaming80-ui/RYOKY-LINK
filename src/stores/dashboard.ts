@@ -1,72 +1,119 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { jellyfinApi } from '@/services/jellyfin-api'
-import { useAuthStore } from './auth'
-import { mapBaseItemDto } from '@/utils/mapper'
-import type { BaseItemDto } from '@/types'
+// src/stores/dashboard.ts
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
+import { jellyfinApi } from '@/services/jellyfin-api';
+import { useAuthStore } from './auth';
 
-interface RecentlyAddedData {
-  name: string
-  items: BaseItemDto[]
+export interface DashboardRail {
+  id: string;
+  title: string;
+  type: 'resume' | 'recent' | 'suggestions';
+  items: any[];
+  viewId: string;
+  viewName: string;
 }
 
 export const useDashboardStore = defineStore('dashboard', () => {
-  const auth = useAuthStore()
-
-  const resumeVideo = ref<BaseItemDto[]>([])
-  const resumeAudio = ref<BaseItemDto[]>([])
-  const resumeBooks = ref<BaseItemDto[]>([])
-  const nextUp = ref<BaseItemDto[]>([])
-  const recentlyAdded = ref<Map<string, RecentlyAddedData>>(new Map())
-
-  const isLoading = ref(false)
-  const error = ref<string | null>(null)
-
-  const allResume = computed(() => [...resumeVideo.value, ...resumeAudio.value, ...resumeBooks.value])
+  const rails = ref<DashboardRail[]>([]);
+  const isLoading = ref(false);
 
   async function fetchDashboard() {
-    if (!auth.userId) return
-    isLoading.value = true
-    error.value = null
-    try {
-      const [video, audio, books, next] = await Promise.all([
-        jellyfinApi.getResumeItems(auth.userId, 'Video'),
-        jellyfinApi.getResumeItems(auth.userId, 'Audio'),
-        jellyfinApi.getResumeItems(auth.userId, 'Book'),
-        jellyfinApi.getNextUp(auth.userId, { limit: 24 }),
-      ])
-      resumeVideo.value = video.map(mapBaseItemDto)
-      resumeAudio.value = audio.map(mapBaseItemDto)
-      resumeBooks.value = books.map(mapBaseItemDto)
-      nextUp.value = next.map(mapBaseItemDto)
-    } catch (e) {
-      error.value = String(e)
-    } finally {
-      isLoading.value = false
-    }
-  }
+    const auth = useAuthStore();
+    if (!auth.isAuthenticated) return;
 
-  async function fetchRecentlyAddedForView(viewId: string, viewName: string) {
-    if (!auth.userId) return
+    isLoading.value = true;
+    rails.value = [];
+
     try {
-      const items = await jellyfinApi.getRecentlyAdded(auth.userId, viewId, 16)
-      recentlyAdded.value.set(viewId, { name: viewName, items: items.map(mapBaseItemDto) })
-      recentlyAdded.value = new Map(recentlyAdded.value)
-    } catch (e) {
-      console.error(`Failed to fetch recently added for ${viewName}:`, e)
+      // 1. Récupération des bibliothèques (Views) de l'utilisateur
+      const views = await jellyfinApi.getViews(auth.userId);
+      const allRails: DashboardRail[] = [];
+
+      // 2. Pour chaque bibliothèque, on génère les rails
+      for (const view of views) {
+        // Appels parallèles pour optimiser la vitesse de chargement
+        const [resumeRes, recentRes] = await Promise.all([
+          jellyfinApi.getItems({
+            userId: auth.userId,
+            parentId: view.Id,
+            filters: 'IsResumable',
+            sortBy: 'DatePlayed',
+            sortOrder: 'Descending',
+            limit: 20,
+            recursive: true,
+            fields: ['PrimaryImageAspectRatio', 'BasicSyncInfo', 'CanDelete', 'MediaSourceCount', 'SeriesName', 'SeasonName'],
+            imageTypeLimit: 1,
+            enableImageTypes: ['Primary']
+          }),
+          jellyfinApi.getRecentlyAdded(auth.userId, view.Id, 20)
+        ]);
+
+        const resumeItems = resumeRes.Items || [];
+        const recentItems = recentRes || [];
+
+        // 🎯 Rail 1 : Reprendre la lecture
+        if (resumeItems.length > 0) {
+          allRails.push({
+            id: `${view.Id}-resume`,
+            title: `${view.Name} - Reprendre la lecture`,
+            type: 'resume',
+            items: resumeItems,
+            viewId: view.Id,
+            viewName: view.Name
+          });
+        }
+
+        // 🎯 Rail 2 : Ajouts Récents
+        if (recentItems.length > 0) {
+          allRails.push({
+            id: `${view.Id}-recent`,
+            title: `${view.Name} - Ajouts Récents`,
+            type: 'recent',
+            items: recentItems,
+            viewId: view.Id,
+            viewName: view.Name
+          });
+        }
+
+        // 🎯 Rail 3 : Suggestions (En attendant ton LLM, on prend des items aléatoires non vus)
+        const suggestionsRes = await jellyfinApi.getItems({
+          userId: auth.userId,
+          parentId: view.Id,
+          sortBy: 'Random',
+          sortOrder: 'Descending',
+          limit: 20,
+          recursive: true,
+          filters: 'IsUnplayed',
+          fields: ['PrimaryImageAspectRatio', 'BasicSyncInfo'],
+          imageTypeLimit: 1,
+          enableImageTypes: ['Primary']
+        });
+        
+        const suggestions = suggestionsRes.Items || [];
+        if (suggestions.length > 0) {
+          allRails.push({
+            id: `${view.Id}-suggestions`,
+            title: `${view.Name} - Suggestions`,
+            type: 'suggestions',
+            items: suggestions,
+            viewId: view.Id,
+            viewName: view.Name
+          });
+        }
+      }
+
+      // Mise à jour de l'état réactif
+      rails.value = allRails;
+    } catch (error) {
+      console.error('[RYOKY] Erreur chargement dashboard:', error);
+    } finally {
+      isLoading.value = false;
     }
   }
 
   return {
-    resumeVideo,
-    resumeAudio,
-    resumeBooks,
-    nextUp,
-    recentlyAdded,
+    rails,
     isLoading,
-    error,
-    allResume,
-    fetchDashboard,
-    fetchRecentlyAddedForView,
-  }
-})
+    fetchDashboard
+  };
+});

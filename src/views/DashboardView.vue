@@ -1,90 +1,120 @@
 <template>
-  <div class="dashboard">
-    <MediaBanner
-      v-if="carouselItems.length > 0"
-      :items="carouselItems"
-      @play="handlePlay"
-      @detail="handleDetail"
-    />
-    <div class="dashboard-content">
-      <PosterRow
-        v-if="dashboardStore.resumeVideo.length > 0"
-        label="Continuer à regarder"
-        :posters="dashboardStore.resumeVideo"
-        @select="handleDetail"
-      />
-      <PosterRow
-        v-if="dashboardStore.nextUp.length > 0"
-        label="Prochain épisode"
-        :posters="dashboardStore.nextUp"
-        @select="handleDetail"
-      />
-      <PosterRow
-        v-for="[viewId, viewData] in recentlyAddedEntries"
-        :key="viewId"
-        :label="`Ajoutés récemment dans ${viewData.name}`"
-        :posters="viewData.items"
-        :layout="isMobile ? 'grid' : 'row'"
-        @select="handleDetail"
-      />
+  <main class="dashboard-container">
+    <header class="dashboard-header">
+      <h1 class="dashboard-welcome">
+        Bienvenue, <span class="highlight">{{ auth.currentUser?.Name || 'Commandant' }}</span>
+      </h1>
+    </header>
+
+    <!-- État de chargement -->
+    <div v-if="dashboard.isLoading" class="loading-state">
+      <div class="loader"></div>
+      <p>Chargement de la médiathèque...</p>
     </div>
-  </div>
+
+    <!-- État vide -->
+    <div v-else-if="dashboard.rails.length === 0" class="empty-state">
+      <p>Aucun média trouvé dans vos bibliothèques.</p>
+    </div>
+
+    <!-- Affichage des Rails -->
+    <template v-else>
+      <MediaRail 
+        v-for="rail in dashboard.rails" 
+        :key="rail.id"
+        :title="rail.title"
+        :items="rail.items"
+      />
+    </template>
+  </main>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useDashboardStore } from '@/stores/dashboard'
-import { useViewsStore } from '@/stores/views'
-import MediaBanner from '@/components/media/MediaBanner.vue'
-import PosterRow from '@/components/media/PosterRow.vue'
-import type { BaseItemDto } from '@/types'
+import { onMounted } from 'vue';
+import { useDashboardStore } from '@/stores/dashboard';
+import { useAuthStore } from '@/stores/auth';
+import { useFocusNav } from '@/composables/useFocusNav';
+import MediaRail from '@/components/MediaRail.vue';
 
-const router = useRouter()
-const dashboardStore = useDashboardStore()
-const viewsStore = useViewsStore()
+const dashboard = useDashboardStore();
+const auth = useAuthStore();
 
-const isMobile = ref(window.innerWidth <= 768)
-window.addEventListener('resize', () => {
-  isMobile.value = window.innerWidth <= 768
-})
+// 🎮 Activation de la navigation au clavier pour la TV
+useFocusNav();
 
-const carouselItems = computed(() => [...dashboardStore.nextUp, ...dashboardStore.allResume].slice(0, 5))
-const recentlyAddedEntries = computed(() => Array.from(dashboardStore.recentlyAdded.entries()))
-
-onMounted(async () => {
-  await dashboardStore.fetchDashboard()
-  await viewsStore.fetchViews()
-  for (const view of viewsStore.views) {
-    await dashboardStore.fetchRecentlyAddedForView(view.id, view.name)
-  }
-})
-
-function handleDetail(item: BaseItemDto) {
-  router.push({ name: 'item', params: { id: item.id } })
-}
-
-function handlePlay(item: BaseItemDto) {
-  if (item.type === 'Movie' || item.type === 'Episode') {
-    router.push({ name: 'player', query: { itemId: item.id } })
-  } else {
-    handleDetail(item)
-  }
-}
+onMounted(() => {
+  dashboard.fetchDashboard();
+});
 </script>
 
 <style scoped>
-.dashboard {
+.dashboard-container {
   min-height: 100vh;
-  background: var(--sao-bg);
-  padding-bottom: 32px;
+  padding-top: 2rem;
+  padding-bottom: 4rem;
 }
-.dashboard-content {
-  padding: 0;
+
+.dashboard-header {
+  padding: 0 1.5rem;
+  margin-bottom: 2rem;
 }
+
+.dashboard-welcome {
+  font-size: 2rem;
+  font-weight: 300;
+  color: var(--sao-text);
+  margin: 0;
+  letter-spacing: 1px;
+}
+
+.highlight {
+  color: var(--sao-cyan);
+  font-weight: 600;
+  text-shadow: 0 0 10px var(--sao-cyan-glow);
+}
+
+/* Loader style SAO */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 50vh;
+  color: var(--sao-text-secondary);
+}
+
+.loader {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--sao-surface-elevated);
+  border-top: 3px solid var(--sao-cyan);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+  box-shadow: 0 0 15px var(--sao-cyan-glow);
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 50vh;
+  color: var(--sao-text-secondary);
+  font-size: 1.2rem;
+}
+
+/* Responsive Mobile */
 @media (max-width: 768px) {
-  .dashboard {
-    overflow-x: hidden;
+  .dashboard-welcome {
+    font-size: 1.5rem;
+  }
+  .rail-title {
+    font-size: 1.2rem;
   }
 }
 </style>
