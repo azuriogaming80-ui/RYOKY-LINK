@@ -1,26 +1,25 @@
 <!DOCTYPE html>
-<html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RYOKY-LINK</title>
-    
-    <!-- 🌐 Google Fonts pour tous les thèmes -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Creepster&family=Mountains+of+Christmas:wght@400;700&family=Rajdhani:wght@400;500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-
-    <!-- ⚡ Anti-FOUC Script (Applique le thème AVANT le rendu du navigateur) -->
-    <script>
-      (function() {
-        const theme = localStorage.getItem('ryoky_theme') || 'default';
-        document.documentElement.setAttribute('data-theme', theme);
-      })();
-    </script>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<html lang="fr" data-theme="sao">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RYOKY-LINK - Système de Sécurité Active</title>
+  
+  <!-- 🎨 Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  
+  <!-- 🛡️ Script anti-FOUC - Applique le thème AVANT le montage de Vue -->
+  <script>
+    (function() {
+      const theme = localStorage.getItem('ryoky-theme') || 'sao';
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
 </html>

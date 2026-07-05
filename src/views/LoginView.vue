@@ -35,14 +35,14 @@
           >
             <div class="profile-avatar">
               <img
-                v-if="getProfileImageUrl(user)"
+                v-if="user.PrimaryImageTag && !avatarErrors[user.Id]"
                 :src="getProfileImageUrl(user)"
                 :alt="user.Name"
                 loading="lazy"
                 @error="handleAvatarError(user)"
               />
               <div v-else class="avatar-fallback">
-                {{ user.Name?.charAt(0) || '?' }}
+                {{ getInitials(user.Name) }}
               </div>
             </div>
             <span class="profile-name">{{ user.Name }}</span>
@@ -58,18 +58,17 @@
         <div class="selected-profile">
           <div class="profile-avatar large">
             <img
-              v-if="getProfileImageUrl(selectedUser) && !avatarErrors[selectedUser?.Id]"
+              v-if="selectedUser?.PrimaryImageTag && !avatarErrors[selectedUser?.Id]"
               :src="getProfileImageUrl(selectedUser)"
               :alt="selectedUser?.Name"
               @error="handleAvatarError(selectedUser)"
             />
             <div v-else class="avatar-fallback large">
-              {{ selectedUser?.Name?.charAt(0) || '?' }}
+              {{ getInitials(selectedUser?.Name) }}
             </div>
           </div>
           <h2 class="profile-title">{{ selectedUser?.Name }}</h2>
         </div>
-
         <label class="login-label">MOT DE PASSE</label>
         <input
           v-model="password"
@@ -78,7 +77,6 @@
           class="login-input"
           @keyup.enter="authenticate"
         />
-        
         <div class="login-actions">
           <button class="login-button" @click="authenticate">
             AUTHENTIFIER
@@ -87,7 +85,6 @@
             RETOUR
           </button>
         </div>
-        
         <p v-if="error" class="login-error">{{ error }}</p>
       </div>
 
@@ -119,6 +116,17 @@ const selectedUser = ref<any>(null);
 const password = ref('');
 const avatarErrors = reactive<Record<string, boolean>>({});
 
+// Fonction pour récupérer les initiales (façon TuiUserSelect)
+const getInitials = (name?: string): string => {
+  if (!name) return '?';
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+};
+
 // Connexion au serveur Jellyfin
 const connectToServer = async () => {
   if (!serverUrl.value.trim()) {
@@ -132,19 +140,19 @@ const connectToServer = async () => {
   try {
     // Normaliser l'URL (supprimer le slash final)
     const url = serverUrl.value.replace(/\/$/, '');
-    
-    //  Configurer le serveur AVANT tout appel API
+
+    // Configurer le serveur AVANT tout appel API
     jellyfinApi.setServer(url);
-    
+
     // Récupérer la liste des utilisateurs publics
     const data = await jellyfinApi.getPublicUsers();
     users.value = data || [];
-    
+
     if (users.value.length === 0) {
       error.value = 'Aucun profil trouvé sur ce serveur';
       return;
     }
-    
+
     // Passer à l'étape des profils
     step.value = 'profiles';
   } catch (err: any) {
@@ -187,7 +195,7 @@ const authenticate = async () => {
     router.push('/');
   } catch (err: any) {
     console.error('Authentication error:', err);
-    error.value = err.response?.data?.Message || 'Échec d\'authentification - vérifiez le mot de passe';
+    error.value = err.response?.data?.Message || "Échec d'authentification - vérifiez le mot de passe";
   } finally {
     isLoading.value = false;
   }
@@ -216,293 +224,73 @@ const handleAvatarError = (user: any) => {
   }
 };
 
-// 🔒 URL de l'image de profil avec injection du token pour contourner l'auth Jellyfin
+// 🔒 URL de l'image de profil - MÉTHODE SIMPLE ET ROBUSTE (KISS)
 const getProfileImageUrl = (user: any): string => {
   if (!user?.Id) return '';
-  // L'API /Users/Public renvoie HasPassword mais pas toujours PrimaryImageTag
-  // On construit l'URL et on laisse le @error gérer le fallback si pas d'image
-  const url = `${jellyfinApi.baseUrl}/Users/${user.Id}/Images/Primary`;
-  const params = new URLSearchParams();
-  
-  // Injection du token si disponible (pour les images qui nécessitent une auth)
-  if (jellyfinApi.token) {
-    params.append('api_key', jellyfinApi.token);
-  }
-  
-  // Taille optimisée pour les avatars
-  params.append('MaxWidth', '200');
-  params.append('Quality', '90');
-  
-  return `${url}?${params.toString()}`;
+  // URL ultra-simple qui fonctionne parfaitement avec Jellyfin
+  // On utilise le ref local serverUrl pour garantir la réactivité
+  return `${serverUrl.value}/Users/${user.Id}/Images/Primary?maxHeight=300`;
 };
 </script>
 
 <style scoped>
+/* Container principal */
 .login-container {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--sao-background);
-  padding: 2rem;
+  background: var(--sao-bg);
+  padding: 20px;
 }
 
 .login-hud {
   width: 100%;
-  max-width: 600px;
-  background: var(--sao-surface);
-  border: 2px solid var(--sao-cyan);
-  border-radius: var(--radius-lg);
-  padding: 3rem;
-  box-shadow: 0 0 30px var(--sao-cyan-glow), inset 0 0 60px rgba(0, 255, 255, 0.05);
-  position: relative;
+  max-width: 900px;
+  border: 1px solid var(--sao-cyan);
+  background: rgba(10, 10, 15, 0.8);
+  padding: 40px;
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.15);
 }
 
-/* Coins décoratifs SAO */
-.login-hud::before,
-.login-hud::after {
-  content: '';
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--sao-cyan);
-  border-radius: 50%;
-  background: var(--sao-cyan);
-  box-shadow: 0 0 10px var(--sao-cyan-glow);
-}
-
-.login-hud::before {
-  top: -6px;
-  left: -6px;
-}
-
-.login-hud::after {
-  bottom: -6px;
-  right: -6px;
-}
-
+/* Header */
 .login-header {
   text-align: center;
-  margin-bottom: 3rem;
+  margin-bottom: 40px;
 }
 
 .login-title {
   font-family: var(--font-display);
-  font-size: 2.5rem;
-  font-weight: 700;
+  font-size: 3rem;
   color: var(--sao-cyan);
+  letter-spacing: 8px;
+  margin: 0;
   text-shadow: 0 0 20px var(--sao-cyan-glow);
-  margin: 0 0 0.5rem 0;
-  letter-spacing: 0.1em;
+  animation: neonPulse 3s ease-in-out infinite;
 }
 
 .login-subtitle {
   font-family: var(--font-mono);
   font-size: 0.9rem;
-  color: var(--sao-accent);
-  margin: 0;
-  letter-spacing: 0.05em;
+  color: var(--sao-text-secondary);
+  letter-spacing: 3px;
+  margin-top: 8px;
 }
 
+@keyframes neonPulse {
+  0%, 100% {
+    text-shadow: 0 0 10px var(--sao-cyan), 0 0 20px var(--sao-cyan);
+  }
+  50% {
+    text-shadow: 0 0 20px var(--sao-cyan), 0 0 40px var(--sao-cyan), 0 0 60px var(--sao-cyan-glow);
+  }
+}
+
+/* Steps */
 .login-step {
-  animation: fadeIn 0.4s ease;
+  animation: fadeIn 0.4s ease-out;
 }
 
-.login-label {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  color: var(--sao-text-secondary);
-  margin-bottom: 0.75rem;
-  letter-spacing: 0.05em;
-}
-
-.login-input {
-  width: 100%;
-  padding: 1rem;
-  background: var(--sao-background);
-  border: 1px solid var(--sao-border);
-  border-radius: var(--radius-md);
-  color: var(--sao-text);
-  font-family: var(--font-body);
-  font-size: 1rem;
-  margin-bottom: 1.5rem;
-  transition: all 0.3s ease;
-  box-sizing: border-box;
-}
-
-.login-input:focus {
-  outline: none;
-  border-color: var(--sao-cyan);
-  box-shadow: 0 0 15px var(--sao-cyan-glow);
-}
-
-.login-button {
-  width: 100%;
-  padding: 1rem;
-  background: transparent;
-  border: 2px solid var(--sao-cyan);
-  border-radius: var(--radius-md);
-  color: var(--sao-cyan);
-  font-family: var(--font-mono);
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-transform: uppercase;
-}
-
-.login-button:hover {
-  background: var(--sao-cyan);
-  color: var(--sao-background);
-  box-shadow: 0 0 20px var(--sao-cyan-glow);
-  transform: translateY(-2px);
-}
-
-.login-button.secondary {
-  border-color: var(--sao-border);
-  color: var(--sao-text-secondary);
-  margin-top: 1rem;
-}
-
-.login-button.secondary:hover {
-  background: var(--sao-surface-elevated);
-  color: var(--sao-text);
-  box-shadow: none;
-}
-
-.login-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.login-error {
-  color: #ff4444;
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  margin-top: 1rem;
-  text-align: center;
-  animation: shake 0.5s ease;
-}
-
-.login-loading {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-lg);
-  z-index: 10;
-}
-
-.loading-spinner {
-  width: 50px;
-  height: 50px;
-  border: 3px solid var(--sao-border);
-  border-top-color: var(--sao-cyan);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 1rem;
-}
-
-/* Grille des profils */
-.profiles-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.profile-card {
-  background: var(--sao-background);
-  border: 2px solid var(--sao-border);
-  border-radius: var(--radius-lg);
-  padding: 1.5rem 1rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.profile-card:hover {
-  border-color: var(--sao-cyan);
-  transform: translateY(-4px);
-  box-shadow: 0 8px 25px var(--sao-cyan-glow);
-}
-
-.profile-avatar {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 3px solid var(--sao-border);
-  transition: all 0.3s ease;
-  background: var(--sao-surface-elevated);
-}
-
-.profile-avatar.large {
-  width: 120px;
-  height: 120px;
-}
-
-.profile-card:hover .profile-avatar {
-  border-color: var(--sao-cyan);
-  box-shadow: 0 0 20px var(--sao-cyan-glow);
-}
-
-.profile-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.avatar-fallback {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, var(--sao-cyan), var(--sao-cyan-dark));
-  color: var(--sao-background);
-  font-size: 2rem;
-  font-weight: bold;
-}
-
-.avatar-fallback.large {
-  font-size: 3rem;
-}
-
-.profile-name {
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  color: var(--sao-text);
-  text-align: center;
-  word-break: break-word;
-}
-
-.selected-profile {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.profile-title {
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  color: var(--sao-cyan);
-  margin: 1rem 0 0 0;
-}
-
-/* Animations */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -514,34 +302,262 @@ const getProfileImageUrl = (user: any): string => {
   }
 }
 
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-10px); }
-  75% { transform: translateX(10px); }
+.login-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--sao-dim);
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.login-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--sao-dim);
+  color: var(--sao-cyan);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  padding: 14px 18px;
+  outline: none;
+  transition: all 0.3s ease;
+  margin-bottom: 20px;
+}
+
+.login-input:focus {
+  border-color: var(--sao-cyan);
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+}
+
+.login-input::placeholder {
+  color: var(--sao-text-secondary);
+}
+
+/* Buttons */
+.login-button {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--sao-cyan);
+  color: var(--sao-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  padding: 14px 24px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.login-button:hover::before {
+  left: 100%;
+}
+
+.login-button:hover {
+  background: rgba(0, 240, 255, 0.1);
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.login-button.secondary {
+  border-color: var(--sao-dim);
+  color: var(--sao-text-secondary);
+  margin-top: 20px;
+}
+
+.login-button.secondary:hover {
+  border-color: var(--sao-amber);
+  color: var(--sao-amber);
+  background: rgba(255, 184, 0, 0.1);
+  box-shadow: 0 0 20px rgba(255, 184, 0, 0.2);
+}
+
+/* Error */
+.login-error {
+  color: var(--sao-danger);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  margin-top: 16px;
+  text-align: center;
+  text-shadow: 0 0 8px rgba(255, 68, 68, 0.3);
+}
+
+/* Profiles Grid */
+.profiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.profile-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--sao-dim);
+  padding: 20px 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-card:hover {
+  border-color: var(--sao-cyan);
+  background: rgba(0, 240, 255, 0.05);
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.2);
+  transform: translateY(-4px);
+}
+
+.profile-avatar {
+  width: 100px;
+  height: 100px;
+  border: 2px solid var(--sao-dim);
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  transition: all 0.3s ease;
+}
+
+.profile-card:hover .profile-avatar {
+  border-color: var(--sao-cyan);
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+}
+
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-fallback {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--sao-cyan);
+  text-shadow: 0 0 10px var(--sao-cyan-glow);
+}
+
+.profile-avatar.large {
+  width: 120px;
+  height: 120px;
+}
+
+.avatar-fallback.large {
+  font-size: 3rem;
+}
+
+.profile-name {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--sao-text);
+  letter-spacing: 1px;
+  text-align: center;
+}
+
+/* Selected Profile */
+.selected-profile {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.profile-title {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  color: var(--sao-cyan);
+  margin-top: 16px;
+  letter-spacing: 3px;
+}
+
+/* Login Actions */
+.login-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.login-actions .login-button {
+  flex: 1;
+}
+
+/* Loading */
+.login-loading {
+  text-align: center;
+  padding: 40px;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 3px solid var(--sao-dim);
+  border-top-color: var(--sao-cyan);
+  border-radius: 50%;
+  margin: 0 auto 20px;
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Responsive */
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .login-hud {
-    padding: 2rem 1.5rem;
+    padding: 30px 20px;
   }
 
   .login-title {
     font-size: 2rem;
+    letter-spacing: 4px;
+  }
+
+  .login-subtitle {
+    font-size: 0.8rem;
   }
 
   .profiles-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 16px;
   }
 
   .profile-avatar {
-    width: 70px;
-    height: 70px;
+    width: 80px;
+    height: 80px;
+  }
+
+  .avatar-fallback {
+    font-size: 2rem;
+  }
+
+  .profile-avatar.large {
+    width: 100px;
+    height: 100px;
+  }
+
+  .avatar-fallback.large {
+    font-size: 2.5rem;
+  }
+
+  .login-actions {
+    flex-direction: column;
   }
 }
 </style>
