@@ -1,29 +1,17 @@
-// src/services/user-image-service.ts
-/**
- * Service spécialisé pour la récupération des images de profil utilisateur
- * Les images de profil utilisateur utilisent un endpoint différent que les autres images
- */
+const JELLYFIN_URL = import.meta.env.VITE_JELLYFIN_URL || 'http://localhost:49169';
 
-export function getUserProfileImageUrl(baseUrl: string, userId: string, token: string, options?: {
-  width?: number;
-  height?: number;
-  quality?: number;
-}): string {
-  if (!userId || !baseUrl || !token) {
-    return '';
+export interface PublicUser {
+  id: string;
+  name: string;
+  serverId: string;
+  hasPassword: boolean;
+  primaryImageTag?: string;
+}
+
+export function getProfileImageUrl(user: PublicUser): string {
+  if (!user || !user.id) return '';
+  if (user.primaryImageTag) {
+    return `${JELLYFIN_URL}/Users/${user.id}/Images/Primary?tag=${user.primaryImageTag}&maxHeight=300&maxWidth=300&quality=90`;
   }
-
-  let url = `${baseUrl}/Users/${userId}/ProfileImage`;
-  const params = new URLSearchParams();
-
-  // Token d'authentification obligatoire pour les images de profil
-  params.append('api_key', token);
-
-  // Options optionnelles de redimensionnement
-  if (options?.width) params.append('MaxWidth', String(options.width));
-  if (options?.height) params.append('MaxHeight', String(options.height));
-  if (options?.quality) params.append('Quality', String(options.quality));
-
-  if (params.toString()) url += `?${params.toString()}`;
-  return url;
+  return '';
 }

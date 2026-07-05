@@ -1,74 +1,73 @@
-// src/stores/auth.ts
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { jellyfinApi } from '@/services/jellyfin-api'
-import type { AuthenticationResult } from '@/types/jellyfin'
+import { defineStore } from 'pinia';
+import { jellyfinApi } from '../services/jellyfin-api';
 
-export const useAuthStore = defineStore('auth', () => {
-  const serverUrl = ref(localStorage.getItem('jellyfin_server') || '')
-  const accessToken = ref(localStorage.getItem('jellyfin_token') || '')
-  const userId = ref(localStorage.getItem('jellyfin_userid') || '')
-  const currentUser = ref<any>(null)
+interface User {
+  id: string;
+  name: string;
+  serverId: string;
+}
+
+interface AuthState {
+  token: string | null;
+  user: User | null;
+  serverUrl: string | null;
+}
+
+export const useAuthStore = defineStore('auth', {
+  state: (): AuthState => ({
+    token: localStorage.getItem('jellyfin_token'),
+    user: JSON.parse(localStorage.getItem('jellyfin_user') || 'null'),
+    serverUrl: localStorage.getItem('server_url') || import.meta.env.VITE_JELLYFIN_URL
+  }),
   
-  const isAuthenticated = computed(() => !!accessToken.value && !!serverUrl.value)
+  actions: {
+    async authenticateByName(username: string, password: string) {
+      try {
+        const response = await jellyfinApi.post('/Users/AuthenticateByName', {
+          Username: username,
+          Pw: password
+        });
+        
+        const data = response.data; // Déjà en camelCase grâce à l'intercepteur !
+        
+        this.token = data.accessToken;
+        this.user = {
+          id: data.user.id,
+          name: data.user.name,
+          serverId: data.user.serverId
+        };
+        
+        localStorage.setItem('jellyfin_token', this.token);
+        localStorage.setItem('jellyfin_user', JSON.stringify(this.user));
+        
+        jellyfinApi.defaults.headers.common['X-Emby-Authorization'] = 
+          `MediaBrowser Client="RYOKY-LINK", Device="Web", DeviceId="ryoky-web-01", Version="1.0.0", Token="${this.token}"`;
+          
+        return data;
+      } catch (error) {
+        console.error("Erreur d'authentification:", error);
+        throw error;
+      }
+    },
 
-  async function login(server: string, username: string, password: string): Promise<AuthenticationResult> {
-    // Nettoyage et injection de l'URL serveur
-    const cleanServer = server.replace(/\/+$/, '')
-    jellyfinApi.setServer(cleanServer)
-    
-    const result = await jellyfinApi.authenticateByName(username, password)
-    
-    // Mise à jour de l'état réactif
-    accessToken.value = result.AccessToken
-    userId.value = result.User.Id
-    serverUrl.value = cleanServer
-    currentUser.value = result.User
-    
-    // Persistance locale
-    localStorage.setItem('jellyfin_server', cleanServer)
-    localStorage.setItem('jellyfin_token', result.AccessToken)
-    localStorage.setItem('jellyfin_userid', result.User.Id)
-    
-    // Synchronisation avec l'instance API
-    jellyfinApi.setToken(result.AccessToken)
-    jellyfinApi.setUserId(result.User.Id)
-    
-    return result
-  }
+    async getPublicUsers() {
+      const response = await jellyfinApi.get('/Users/Public');
+      return response.data; 
+    },
 
-  function logout() {
-    // Nettoyage de l'état et du stockage
-    accessToken.value = ''
-    userId.value = ''
-    currentUser.value = null
-    localStorage.removeItem('jellyfin_token')
-    localStorage.removeItem('jellyfin_userid')
-    
-    // Reset de l'instance API
-    jellyfinApi.setToken('')
-    jellyfinApi.setUserId('')
-    
-    // Dispatch global pour que le router puisse réagir
-    window.dispatchEvent(new CustomEvent('jellyfin:logout'))
-  }
+    logout() {
+      this.token = null;
+      this.user = null;
+      localStorage.removeItem('jellyfin_token');
+      localStorage.removeItem('jellyfin_user');
+      delete jellyfinApi.defaults.headers.common['X-Emby-Authorization'];
+    },
 
-  function restoreSession() {
-    if (accessToken.value && serverUrl.value) {
-      jellyfinApi.setServer(serverUrl.value)
-      jellyfinApi.setToken(accessToken.value)
-      jellyfinApi.setUserId(userId.value)
+    restoreSession() {
+      if (this.token && this.user) {
+        jellyfinApi.defaults.headers.common['X-Emby-Authorization'] = 
+          `MediaBrowser Client="RYOKY-LINK", Device="Web", DeviceId="ryoky-web-01", Version="1.0.0", Token="${this.token}"`;
+      }
     }
   }
-
-  return {
-    serverUrl,
-    accessToken,
-    userId,
-    currentUser,
-    isAuthenticated,
-    login,
-    logout,
-    restoreSession
-  }
-})
+});
