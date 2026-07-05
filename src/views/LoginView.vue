@@ -102,7 +102,6 @@ import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { jellyfinApi } from '@/services/jellyfin-api';
 import { useAuthStore } from '@/stores/auth';
-import { getUserProfileImageUrl } from '@/services/user-image-service';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -225,16 +224,11 @@ const handleAvatarError = (user: any) => {
   }
 };
 
-// 🔒 URL de l'image de profil - Utilise le bon endpoint Jellyfin
+// 🔒 URL de l'image de profil - Endpoint Jellyfin simple (sans token pour les profils publics)
 const getProfileImageUrl = (user: any): string => {
   if (!user?.Id) return '';
-  // ✅ Utilise le service dédié aux images de profil
-  return getUserProfileImageUrl(
-    serverUrl.value.replace(/\/$/, ''),
-    user.Id,
-    jellyfinApi.token || '',
-    { height: 300, width: 300 }
-  );
+  // ✅ Endpoint Jellyfin pour les images de profil publiques (accessible sans authentification)
+  return `${serverUrl.value.replace(/\/$/, '')}/Users/${user.Id}/Images/Primary?maxHeight=300`;
 };
 </script>
 
