@@ -21,16 +21,14 @@ export default defineConfig({
       'localhost',
       '127.0.0.1'
     ],
-  },
-  preview: {
-    port: 49170,
-    host: true,
-    strictPort: true,
-    allowedHosts: [
-      'www.kaokyserver.ovh',
-      'kaokyserver.ovh',
-      'localhost',
-      '127.0.0.1'
-    ],
-  },
+    // 🔄 Proxy pour éviter les erreurs CORS avec Jellyfin
+    proxy: {
+      '/api': {
+        target: 'http://localhost:49169', // Ton backend Jellyfin
+        changeOrigin: true, // Indispensable pour tromper le navigateur sur l'origine
+        secure: false, // Si jamais Jellyfin est en HTTPS auto-signé en local
+        rewrite: (path) => path.replace(/^\/api/, '') // Enlève le /api avant d'envoyer à Jellyfin
+      }
+    }
+  }
 })

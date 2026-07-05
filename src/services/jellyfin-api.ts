@@ -1,9 +1,10 @@
 import axios from 'axios';
 
-const JELLYFIN_URL = import.meta.env.VITE_JELLYFIN_URL || 'http://localhost:49169';
+// On utilise un préfixe relatif pour passer par le proxy Vite (et le futur reverse proxy Nginx/Caddy en prod)
+const API_PREFIX = '/api';
 
 export const jellyfinApi = axios.create({
-  baseURL: JELLYFIN_URL,
+  baseURL: API_PREFIX,
   headers: {
     'X-Emby-Authorization': 'MediaBrowser Client="RYOKY-LINK", Device="Web", DeviceId="ryoky-web-01", Version="1.0.0"'
   }
@@ -47,5 +48,6 @@ export function generateUUID(): string {
 
 export function getImageUrl(itemId: string, tag: string, type: string = 'Primary'): string {
   if (!itemId || !tag) return '';
-  return `${JELLYFIN_URL}/Items/${itemId}/Images/${type}?tag=${tag}&maxHeight=400&quality=90`;
+  // L'URL de l'image passe aussi par le proxy /api pour éviter les soucis de mixed-content ou CORS
+  return `${API_PREFIX}/Items/${itemId}/Images/${type}?tag=${tag}&maxHeight=400&quality=90`;
 }
