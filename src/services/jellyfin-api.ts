@@ -1,5 +1,5 @@
 // src/services/jellyfin-api.ts
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { mapJellyfinItem, mapJellyfinItems, mapJellyfinItemSingle } from '@/utils/mapper';
 import type { MediaSegment } from '@/types/item';
 
@@ -8,8 +8,13 @@ class JellyfinApiService {
   private _baseUrl: string = '';
   private _token: string = '';
   private _userId: string = '';
+  private _deviceId: string;
 
   constructor() {
+    // Génération et persistance d'un DeviceId unique pour ce navigateur
+    this._deviceId = localStorage.getItem('jellyfin_deviceid') || crypto.randomUUID();
+    localStorage.setItem('jellyfin_deviceid', this._deviceId);
+
     this.client = axios.create({
       timeout: 30000,
       headers: {
@@ -18,15 +23,17 @@ class JellyfinApiService {
       },
     });
 
-    // Interceptor token
-    this.client.interceptors.request.use((config) => {
+    // Intercepteur global : Injection du header MediaBrowser standardisé
+    this.client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+      let authHeader = `MediaBrowser Client="RYOKY-LINK", Device="Vue Web", DeviceId="${this._deviceId}", Version="1.0.0"`;
       if (this._token) {
-        config.headers['X-Emby-Token'] = this._token;
+        authHeader += `, Token="${this._token}"`;
       }
+      config.headers['X-Emby-Authorization'] = authHeader;
       return config;
     });
 
-    // Interceptor 401 → auto logout
+    // Intercepteur 401 → auto logout global
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
@@ -35,7 +42,8 @@ class JellyfinApiService {
           this._userId = '';
           localStorage.removeItem('jellyfin_token');
           localStorage.removeItem('jellyfin_userid');
-          window.location.href = '/login';
+          // On émet l'événement pour que le router puisse réagir sans hard-reload
+          window.dispatchEvent(new CustomEvent('jellyfin:unauthorized'));
         }
         return Promise.reject(error);
       }
@@ -51,7 +59,8 @@ class JellyfinApiService {
   }
 
   setServer(url: string) {
-    this._baseUrl = url.replace(/\/$/, '');
+    // Nettoyage robuste des slashs de fin
+    this._baseUrl = url.replace(/\/+$/, '');
   }
 
   setToken(token: string) {
@@ -65,21 +74,15 @@ class JellyfinApiService {
   // ========== AUTH ==========
   async getPublicUsers(): Promise<any[]> {
     const data = (await this.client.get(`${this._baseUrl}/Users/Public`)).data;
-    return mapJellyfinItem(data) || [];
+    return mapJellyfinItems(data) || [];
   }
 
   async authenticateByName(username: string, password: string): Promise<any> {
-    const deviceId = localStorage.getItem('jellyfin_deviceid') || crypto.randomUUID();
-    localStorage.setItem('jellyfin_deviceid', deviceId);
-    
-    const auth = `MediaBrowser Client="RyokyLink",Device="Browser",DeviceId="${deviceId}",Version="1.0.0"`;
-    
+    // Le header MediaBrowser est déjà injecté par l'intercepteur !
     const data = (await this.client.post(
       `${this._baseUrl}/Users/AuthenticateByName`,
-      { Username: username, Pw: password },
-      { headers: { 'X-Emby-Authorization': auth } }
+      { Username: username, Pw: password }
     )).data;
-    
     return mapJellyfinItem(data);
   }
 
@@ -118,7 +121,6 @@ class JellyfinApiService {
   }): Promise<any> {
     const query = new URLSearchParams();
     query.append('UserId', params.userId);
-    
     if (params.parentId) query.append('ParentId', params.parentId);
     if (params.includeItemTypes?.length) query.append('IncludeItemTypes', params.includeItemTypes.join(','));
     if (params.mediaTypes?.length) query.append('MediaTypes', params.mediaTypes.join(','));
@@ -134,38 +136,21 @@ class JellyfinApiService {
     if (params.searchTerm) query.append('SearchTerm', params.searchTerm);
 
     const data = (await this.client.get(`${this._baseUrl}/Items?${query.toString()}`)).data;
-    return mapJellyfinItem(data); // On map tout, y compris Items
+    return mapJellyfinItem(data);
   }
 
   // ========== ITEM DETAIL ==========
   async getItem(userId: string, itemId: string): Promise<any> {
     const fields = [
-      'PrimaryImageAspectRatio',
-      'CanDelete',
-      'MediaSourceCount',
-      'Overview',
-      'Genres',
-      'Studios',
-      'People',
-      'Status',
-      'AirDays',
-      'AirTime',
-      'Path',
-      'Tags',
-      'ChildCount',
-      'DateCreated',
-      'IndexNumber',
-      'ParentIndexNumber',
-      'SeriesName',
-      'SeasonName',
-      'SeriesId',
-      'SeasonId',
+      'PrimaryImageAspectRatio', 'CanDelete', 'MediaSourceCount', 'Overview', 'Genres',
+      'Studios', 'People', 'Status', 'AirDays', 'AirTime', 'Path', 'Tags', 'ChildCount',
+      'DateCreated', 'IndexNumber', 'ParentIndexNumber', 'SeriesName', 'SeasonName',
+      'SeriesId', 'SeasonId',
     ].join(',');
-    
+
     const data = (await this.client.get(
       `${this._baseUrl}/Users/${userId}/Items/${itemId}?Fields=${fields}`
     )).data;
-    
     return mapJellyfinItemSingle(data);
   }
 
@@ -176,11 +161,10 @@ class JellyfinApiService {
     query.append('Fields', 'PrimaryImageAspectRatio,BasicSyncInfo,CanDelete,MediaSourceCount,IndexNumber');
     query.append('ImageTypeLimit', '1');
     query.append('EnableImageTypes', 'Primary,Backdrop,Thumb');
-    
+
     const data = (await this.client.get(
       `${this._baseUrl}/Shows/${seriesId}/Seasons?${query.toString()}`
     )).data;
-    
     return mapJellyfinItem(data);
   }
 
@@ -192,11 +176,10 @@ class JellyfinApiService {
     query.append('Fields', 'PrimaryImageAspectRatio,CanDelete,MediaSourceCount,Overview,IndexNumber,ParentIndexNumber,DateCreated');
     query.append('ImageTypeLimit', '1');
     query.append('EnableImageTypes', 'Primary,Backdrop,Thumb');
-    
+
     const data = (await this.client.get(
       `${this._baseUrl}/Shows/${seriesId}/Episodes?${query.toString()}`
     )).data;
-    
     return mapJellyfinItem(data);
   }
 
@@ -208,11 +191,10 @@ class JellyfinApiService {
     query.append('Fields', 'PrimaryImageAspectRatio,CanDelete,MediaSourceCount,BasicSyncInfo');
     query.append('ImageTypeLimit', '1');
     query.append('EnableImageTypes', 'Primary,Backdrop,Thumb');
-    
+
     const data = (await this.client.get(
       `${this._baseUrl}/Items/${itemId}/Similar?${query.toString()}`
     )).data;
-    
     return mapJellyfinItems(data);
   }
 
@@ -238,14 +220,12 @@ class JellyfinApiService {
     query.append('UserId', userId);
     query.append('Limit', String(params?.limit || 24));
     query.append('Fields', 'PrimaryImageAspectRatio,DateCreated,MediaSourceCount,BasicSyncInfo');
-    
     if (params?.seriesId) query.append('SeriesId', params.seriesId);
     if (params?.parentId) query.append('ParentId', params.parentId);
-    
+
     const data = (await this.client.get(
       `${this._baseUrl}/Shows/NextUp?${query.toString()}`
     )).data;
-    
     return mapJellyfinItems(data);
   }
 
@@ -270,7 +250,6 @@ class JellyfinApiService {
       `${this._baseUrl}/Items/${itemId}/PlaybackInfo?UserId=${userId}`,
       params || {}
     )).data;
-    
     return mapJellyfinItem(data);
   }
 
@@ -317,12 +296,10 @@ class JellyfinApiService {
   ): string {
     let url = `${this._baseUrl}/Items/${itemId}/Images/${imageType}`;
     const params = new URLSearchParams();
-    
     if (options?.width) params.append('MaxWidth', String(options.width));
     if (options?.height) params.append('MaxHeight', String(options.height));
     if (options?.quality) params.append('Quality', String(options.quality));
     if (options?.tag) params.append('tag', options.tag);
-    
     if (params.toString()) url += `?${params.toString()}`;
     return url;
   }
@@ -336,11 +313,10 @@ class JellyfinApiService {
     query.append('Fields', 'PrimaryImageAspectRatio,CanDelete,MediaSourceCount,BasicSyncInfo');
     query.append('ImageTypeLimit', '1');
     query.append('EnableImageTypes', 'Primary,Backdrop,Thumb');
-    
+
     const data = (await this.client.get(
       `${this._baseUrl}/Items?${query.toString()}`
     )).data;
-    
     return mapJellyfinItems(data);
   }
 

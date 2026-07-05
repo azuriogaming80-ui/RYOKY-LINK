@@ -1,3 +1,6 @@
+/* =========================================
+   🌟 THÈME PAR DÉFAUT : SAO (Link Start!)
+   ========================================= */
 :root {
   --sao-bg: #0a0a0f;
   --sao-surface: #12121a;
@@ -11,15 +14,92 @@
   --sao-amber-glow: rgba(255, 184, 0, 0.4);
   --sao-danger: #ff4444;
   --sao-success: #00ff88;
-
+  
   --font-display: 'Rajdhani', sans-serif;
   --font-mono: 'Share Tech Mono', monospace;
-
+  
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
+
+  --scanline-display: block;
+  --scanline-color: rgba(0, 240, 255, 0.03);
 }
 
+/* =========================================
+   🏰 THÈME MÉDIÉVAL (Taverne & Parchemin)
+   ========================================= */
+[data-theme="medieval"] {
+  --sao-bg: #1a1410;
+  --sao-surface: #2a2018;
+  --sao-surface-elevated: #3a2d22;
+  --sao-text: #e8dcc4;
+  --sao-text-secondary: #bda688;
+  --sao-dim: #6b5744;
+  --sao-cyan: #d4af37; /* Or royal */
+  --sao-cyan-glow: rgba(212, 175, 55, 0.4);
+  --sao-amber: #8b4513; /* Cuir */
+  --sao-amber-glow: rgba(139, 69, 19, 0.4);
+  --sao-danger: #8a0303;
+  --sao-success: #556b2f;
+  
+  --font-display: 'Cinzel', serif;
+  
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+
+  --scanline-display: none;
+}
+
+/* =========================================
+   🎃 THÈME HALLOWEEN (Citrouille & Mystère)
+   ========================================= */
+[data-theme="halloween"] {
+  --sao-bg: #0d0814;
+  --sao-surface: #1a1025;
+  --sao-surface-elevated: #261836;
+  --sao-text: #f2e9e4;
+  --sao-text-secondary: #b39eb5;
+  --sao-dim: #4a3b52;
+  --sao-cyan: #ff7518; /* Orange citrouille */
+  --sao-cyan-glow: rgba(255, 117, 24, 0.4);
+  --sao-amber: #9b59b6; /* Violet mystique */
+  --sao-amber-glow: rgba(155, 89, 182, 0.4);
+  --sao-danger: #c0392b;
+  --sao-success: #2ecc71;
+  
+  --font-display: 'Creepster', cursive;
+  
+  --scanline-display: block;
+  --scanline-color: rgba(255, 117, 24, 0.04);
+}
+
+/* =========================================
+   🎄 THÈME NOËL (Hiver & Festif)
+   ========================================= */
+[data-theme="christmas"] {
+  --sao-bg: #071510;
+  --sao-surface: #0d2818;
+  --sao-surface-elevated: #143d24;
+  --sao-text: #ffffff;
+  --sao-text-secondary: #a8d5ba;
+  --sao-dim: #2c5e3f;
+  --sao-cyan: #d42424; /* Rouge père noël */
+  --sao-cyan-glow: rgba(212, 36, 36, 0.4);
+  --sao-amber: #f9d71c; /* Or / Étoile */
+  --sao-amber-glow: rgba(249, 215, 28, 0.4);
+  --sao-danger: #d42424;
+  --sao-success: #2e8b57;
+  
+  --font-display: 'Mountains of Christmas', cursive;
+  
+  --scanline-display: none;
+}
+
+/* =========================================
+   🛠️ STYLES GLOBAUX & RESET
+   ========================================= */
 * {
   margin: 0;
   padding: 0;
@@ -34,6 +114,7 @@ html, body, #app {
   font-family: var(--font-display);
   overflow-y: auto;
   overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Scrollbar RYOKY */
@@ -52,9 +133,10 @@ html, body, #app {
   background: var(--sao-cyan);
 }
 
-/* Scanline global */
+/* Scanline global (désactivé sur médiéval/noël) */
 body::after {
   content: '';
+  display: var(--scanline-display, block);
   position: fixed;
   top: 0;
   left: 0;
@@ -64,8 +146,8 @@ body::after {
     0deg,
     transparent,
     transparent 2px,
-    rgba(0, 240, 255, 0.03) 2px,
-    rgba(0, 240, 255, 0.03) 4px
+    var(--scanline-color, rgba(0, 240, 255, 0.03)) 2px,
+    var(--scanline-color, rgba(0, 240, 255, 0.03)) 4px
   );
   pointer-events: none;
   z-index: 9999;
